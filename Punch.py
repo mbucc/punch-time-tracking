@@ -55,6 +55,8 @@ class Punch(object):
             self.execute_out()
         elif( self.args[0] in ['wh','what'] ):
             self.execute_wh()
+        elif( self.args[0] in ['report', 'rep'] ):
+            self.execute_rep()
         else:
             raise PunchCommandError
         
@@ -153,14 +155,21 @@ class Punch(object):
         return time.strftime( self.timestampFormat, time.localtime())
           
     def translate_time_to_secs(self,timestamp):
-        return time.strptime( timestamp, self.timestampFormat )
+        return time.strptime( timestamp[0:15], self.timestampFormat )
     
     def get_duration(self,startTimestamp,endTimestamp):
+        minutes = self.get_duration_in_minutes(startTimestamp, endTimestamp)
+        return self.format_minutes(minutes)
+        
+    def get_duration_in_minutes(self,startTimestamp,endTimestamp):
         start = self.translate_time_to_secs( startTimestamp )
         end = self.translate_time_to_secs( endTimestamp )
         
         minutes = ( time.mktime(end) - time.mktime(start) ) // 60
         
+        return minutes
+
+    def format_minutes(self,minutes):
         retString = '('
         
         if( minutes > 60 ):
@@ -171,6 +180,7 @@ class Punch(object):
         retString = retString + str(int(minutes)) + ' minutes)'
 
         return retString
+        
         
     def add_in_line(self,line_num):
         """
@@ -192,7 +202,6 @@ class Punch(object):
         self.punchFile.write(rec)
         self.close_punch_file()
         print "Start timer on: " + line
-        
         
     def add_out_line(self):
         """
@@ -265,7 +274,7 @@ class Punch(object):
             raise PunchCommandError       
 
     def execute_wh(self):
-        """The logic for the 'out' command."""
+        """The logic for the 'what' command."""
         self.parse_config()
         if( len(self.args) == 1 ):
             lastrec = self.get_last_punch_rec()
@@ -277,6 +286,58 @@ class Punch(object):
         else:
             raise PunchCommandError       
     
+    def execute_rep(self):
+        """The logic for the 'report' command."""
+        self.parse_config()
+        if( len(self.args) == 1 ):
+            dateDict = dict()
+            self.open_punch_file('r')
+            lines = self.punchFile.readlines()
+            for line in lines:
+                rec = line.split('\t')
+                if( len(rec) == 3 ):
+                    task = rec[0]
+                    start = rec[1]
+                    end = rec[2]
+                    duration = self.get_duration_in_minutes(start,end)
+                    dateKey = time.strftime( '%Y%m%d', self.translate_time_to_secs(start))
+                    if( dateKey in dateDict.keys()):
+                        dateValue = dateDict[dateKey]
+                    else:
+                        dateValue = dict()
+                    if( task in dateValue.keys()):
+                        timeList = dateValue[task]
+                    else:
+                        timeList = list()
+                    timeList.append(duration)
+                    dateValue[task] = timeList
+                    dateDict[dateKey] = dateValue
+            
+            # Returned keys are untyped. Copy into a list of strings so we can sort.
+            dateNoneList = dateDict.keys()
+            dateList = list()
+            for dateThing in dateNoneList:
+                dateList.append(str(dateThing))
+            dateList.sort()
+            
+            for dateKey in dateList:
+                print dateKey[0:4] + '-' + dateKey[4:6] + '-' + dateKey[6:] + ':' 
+                taskDict = dateDict[dateKey]
+                taskNoneList = taskDict.keys()
+                taskList = list()
+                for taskThing in taskNoneList:
+                    taskList.append(str(taskThing))
+                taskList.sort()
+                for taskKey in taskList:
+                    minuteList = taskDict[taskKey]
+                    sum = 0.0
+                    for m in minuteList:
+                        sum = sum + m
+                    print '\t' + taskKey + ' ' + self.format_minutes(sum)
+                    
+            self.close_punch_file()
+        else:
+            raise PunchCommandError
 #
 # The entry point for the script.
 #
@@ -290,7 +351,8 @@ Punch.py [-h] command line-number [filename]
   Commands:
   'in' : start the timer for a todo task
   'out' : stop the timer for the current task
-  'what' : print the current 'active' task
+  'what' : print the current 'active' task. shortcut is 'wh'
+  'report' : print a report. shortcut is 'rep'
         
   line-number is the number of the item in the todo.txt file (or filename)
 """
@@ -298,7 +360,7 @@ Punch.py [-h] command line-number [filename]
         version = \
 """
   Punch.py - A time tracker for todo.sh
-  Version 0.1beta
+  Version 0.2beta
   Author: Keith Lawless (keith@keithlawless.com)
   Last updated: 3/14/2009
   License: GPL, http://www.gnu.org/copyleft/gpl.html
