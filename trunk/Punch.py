@@ -5,6 +5,7 @@ Created on Mar 5, 2009
 '''
 import cPickle
 import os.path
+import shutil
 import sys
 import time
 
@@ -38,7 +39,10 @@ class TaskNotFoundError(IOError):
 
 class NoOpenTaskError(IOError):
     """Used to indicate that an 'out' command was issued, but the last task was already closed out."""
-    
+   
+class DateFormatError(IOError):
+    """Used to indicate that a poorly formatted date was passed where a date was expected."""
+     
 class Punch(object):
 
     timestampFormat = '%Y%m%dT%H%M%S'
@@ -57,6 +61,8 @@ class Punch(object):
             self.execute_wh()
         elif( self.args[0] in ['report', 'rep'] ):
             self.execute_rep()
+        elif( self.args[0] in ['archive', 'ar'] ):
+            self.execute_ar()
         else:
             raise PunchCommandError
         
@@ -120,6 +126,31 @@ class Punch(object):
         """Close the output file - punch.csv."""
         self.punchFile.close()
     
+    def open_punch_backup_file(self):
+        """Open the backup file - punch.dat.backup - in the user's TODO_DIR."""
+        name = self.resolve( self.propDict['TODO_DIR'] + "/punch.dat.backup" )
+        self.backupFile = open( name, 'w' )
+                
+    def close_punch_backup_file(self):
+        """Close the output file - punch.csv."""
+        self.backupFile.close()
+        
+    def backup_punch_file(self):
+        self.open_punch_file('r')
+        self.open_punch_backup_file()
+        shutil.copyfileobj(self.punchFile,self.backupFile)
+        self.close_punch_backup_file()
+        self.close_punch_file()
+
+    def open_archive_file(self,mode='a'):
+        """Open the archive file - punch.archive - in the user's TODO_DIR."""
+        name = self.resolve( self.propDict['TODO_DIR'] + "/punch.archive" )
+        self.archiveFile = open( name, mode )
+        
+    def close_archive_file(self):
+        """Close the archive file - punch.archive."""
+        self.archiveFile.close()
+        
     def get_last_punch_rec(self):
         """Returns last line in the output file as a list of fields."""
         lastrec = []
@@ -182,6 +213,23 @@ class Punch(object):
         return retString
         
         
+    def add_literal_line(self,line):
+        """
+        Add a new line to punch.dat containing task,start-timestamp<eol>
+        where task is a literal string (usually in the format '+project').
+        """
+        
+        # If previous output line wasn't closed by issuing an 'out' command, then
+        # do so now.
+        if self.last_punch_line_complete() == False:
+            self.add_out_line()
+             
+        rec = '%s\t%s' % (line, self.get_time())
+        self.open_punch_file()
+        self.punchFile.write(rec)
+        self.close_punch_file()
+        print "Start timer on: " + line
+        
     def add_in_line(self,line_num):
         """
         Add a new line to punch.csv containing task,start-timestamp<eol>
@@ -226,13 +274,16 @@ class Punch(object):
     def execute_in(self):
         """The logic for the 'in' command."""
         self.parse_config()
+        
+        """If only argument is passed, then it is an error."""
         if( len(self.args) == 1 ):
             raise PunchCommandError
         
         """
-        If only two arguments are passed, then there are two possibilities: 
+        If only two arguments are passed, then there are three possibilities: 
         (1) An integer was passed, referencing a line in todo.txt (ie. punch in 7)
-        (2) The user made a mistake.
+        (2) A project name was passed, using the special '+project-name' syntax
+        (3) The user made a mistake.
         """
         if( len(self.args) == 2 ):
             # Check to see if the argument is number.
@@ -246,7 +297,11 @@ class Punch(object):
                 self.add_in_line(line_num)
                 self.close_task_file()
             else:
-                raise PunchCommandError
+                project = self.args[1].strip()
+                if( project[0] == '+' ):
+                    self.add_literal_line(project)
+                else:
+                    raise PunchCommandError
                 
         """
         If three arguments are passed, then the last argument must be a task file (eg. projects.txt)
@@ -291,6 +346,7 @@ class Punch(object):
         self.parse_config()
         if( len(self.args) == 1 ):
             dateDict = dict()
+            totalTimeDict = dict()
             self.open_punch_file('r')
             lines = self.punchFile.readlines()
             for line in lines:
@@ -301,17 +357,34 @@ class Punch(object):
                     end = rec[2]
                     duration = self.get_duration_in_minutes(start,end)
                     dateKey = time.strftime( '%Y%m%d', self.translate_time_to_secs(start))
+                    
+                    # Create a tree of dates that have time reported against them
                     if( dateKey in dateDict.keys()):
                         dateValue = dateDict[dateKey]
                     else:
                         dateValue = dict()
+                    
+                    # Create a simple dictionary of total elapsed time per date 
+                    if( dateKey in totalTimeDict.keys()):
+                        totalTimeValue = int(totalTimeDict[dateKey])
+                    else:
+                        totalTimeValue = 0
+                    
+                    # For each date in the tree, store a subtree with 
+                    # unique tasks for the date
                     if( task in dateValue.keys()):
                         timeList = dateValue[task]
                     else:
                         timeList = list()
+                    
+                    # Populate the tree nodes.
                     timeList.append(duration)
                     dateValue[task] = timeList
                     dateDict[dateKey] = dateValue
+                    
+                    # Store total elapsed time for the entire date.
+                    totalTimeValue = totalTimeValue + duration
+                    totalTimeDict[dateKey] = totalTimeValue
             
             # Returned keys are untyped. Copy into a list of strings so we can sort.
             dateNoneList = dateDict.keys()
@@ -321,7 +394,7 @@ class Punch(object):
             dateList.sort()
             
             for dateKey in dateList:
-                print dateKey[0:4] + '-' + dateKey[4:6] + '-' + dateKey[6:] + ':' 
+                print dateKey[0:4] + '-' + dateKey[4:6] + '-' + dateKey[6:] + ' ' + self.format_minutes(totalTimeDict[dateKey]) +':' 
                 taskDict = dateDict[dateKey]
                 taskNoneList = taskDict.keys()
                 taskList = list()
@@ -338,6 +411,52 @@ class Punch(object):
             self.close_punch_file()
         else:
             raise PunchCommandError
+
+    def execute_ar(self):
+        """The logic for the 'report' command."""
+        self.parse_config()
+        if( len(self.args) == 2 ):
+            #Make sure date argument can be parsed into a date
+            #in the past.
+            try:
+                archiveTs = args[1] + "T23:59:59"
+                archiveDate = time.strptime( archiveTs, '%Y-%m-%dT%H:%M:%S' )
+                archiveTime = time.mktime( archiveDate )
+            except:
+                raise DateFormatError
+                
+            #Back up the punch file
+            self.backup_punch_file()
+            
+            #Read the punch file into memory
+            self.open_punch_file('r')
+            lines = self.punchFile.readlines()
+            self.close_punch_file()
+            
+            #Open the archive file in append mode
+            self.open_archive_file()
+            
+            #Open the punch file in (destructive) write mode
+            self.open_punch_file('w')
+            
+            #Iterate through tasks in memory, either writing to the
+            #archive file or the (new) punch file, based on start timestamp
+            for line in lines:
+                rec = line.split('\t')
+                if( self.punch_rec_complete(rec)):
+                    startTime = time.mktime( time.strptime( rec[1], self.timestampFormat ))
+                    if( startTime < archiveTime ):
+                        self.archiveFile.write(line)
+                    else:
+                        self.punchFile.write(line)
+            
+            #Close the files.
+            self.close_punch_file()
+            self.close_archive_file()
+            
+        else:
+            raise PunchCommandError
+            
 #
 # The entry point for the script.
 #
@@ -346,13 +465,14 @@ if __name__ == '__main__':
     try:
         usage = \
 """
-Punch.py [-h] command line-number [filename]
+Punch.py [-h] command [line-number] [filename] [archive-date]
         
   Commands:
-  'in' : start the timer for a todo task
+  'in' : start the timer for a todo task [line-number]
   'out' : stop the timer for the current task
   'what' : print the current 'active' task. shortcut is 'wh'
   'report' : print a report. shortcut is 'rep'
+  'archive' : archive all time records previous to [archive-date] inclusive
         
   line-number is the number of the item in the todo.txt file (or filename)
 """
@@ -386,4 +506,6 @@ Punch.py [-h] command line-number [filename]
         print "Error: Item number not found in file."
     except NoOpenTaskError:
         print "Error: No incomplete task found."
+    except DateFormatError:
+        print "Error: Could not translate your input into a date."
         
