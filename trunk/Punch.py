@@ -19,10 +19,8 @@ Created on Mar 5, 2009
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 '''
-from os.path import abspath, exists, join
-from os import pathsep, getenv
-
 import cPickle
+import os.path
 import shutil
 import sys
 import time
@@ -84,22 +82,10 @@ class Punch(object):
         else:
             raise PunchCommandError
         
-    def search_file(self, filename, paths):
-        file_found = 0
-        for path in paths:
-           if exists(join(path, filename)):
-               file_found = 1
-               break
-        if file_found:
-           return abspath(join(path, filename))
-        else:
-           return None
-    
     def parse_config(self):
         """Parse the user's todo.cfg file and place the elements into a dictionary"""
         try:
-            paths = [".", getenv("HOME")]
-            configFile = open( self.search_file( "todo.cfg", paths ))
+            configFile = open( "todo.cfg" )
             self.propDict = dict()
             for propLine in configFile:
                 propDef = propLine.strip()
@@ -152,6 +138,10 @@ class Punch(object):
     def open_punch_file(self,mode='a'):
         """Open the output file - punch.dat - in the user's TODO_DIR."""
         name = self.resolve( self.propDict['TODO_DIR'] + "/punch.dat" )
+        
+        if not os.path.exists(name):
+            open( name, 'w' ).close()
+             
         self.punchFile = open( name, mode )
         
     def close_punch_file(self):
@@ -384,64 +374,69 @@ class Punch(object):
             totalTimeDict = dict()
             self.open_punch_file('r')
             lines = self.punchFile.readlines()
-            for line in lines:
-                rec = line.split('\t')
-                if( len(rec) == 3 ):
-                    task = rec[0]
-                    start = rec[1]
-                    end = rec[2]
-                    duration = self.get_duration_in_minutes(start,end)
-                    dateKey = time.strftime( '%Y%m%d', self.translate_time_to_secs(start))
-                    
-                    # Create a tree of dates that have time reported against them
-                    if( dateKey in dateDict.keys()):
-                        dateValue = dateDict[dateKey]
-                    else:
-                        dateValue = dict()
-                    
-                    # Create a simple dictionary of total elapsed time per date 
-                    if( dateKey in totalTimeDict.keys()):
-                        totalTimeValue = int(totalTimeDict[dateKey])
-                    else:
-                        totalTimeValue = 0
-                    
-                    # For each date in the tree, store a subtree with 
-                    # unique tasks for the date
-                    if( task in dateValue.keys()):
-                        timeList = dateValue[task]
-                    else:
-                        timeList = list()
-                    
-                    # Populate the tree nodes.
-                    timeList.append(duration)
-                    dateValue[task] = timeList
-                    dateDict[dateKey] = dateValue
-                    
-                    # Store total elapsed time for the entire date.
-                    totalTimeValue = totalTimeValue + duration
-                    totalTimeDict[dateKey] = totalTimeValue
             
-            # Returned keys are untyped. Copy into a list of strings so we can sort.
-            dateNoneList = dateDict.keys()
-            dateList = list()
-            for dateThing in dateNoneList:
-                dateList.append(str(dateThing))
-            dateList.sort()
-            
-            for dateKey in dateList:
-                print dateKey[0:4] + '-' + dateKey[4:6] + '-' + dateKey[6:] + ' ' + self.format_minutes(totalTimeDict[dateKey]) +':' 
-                taskDict = dateDict[dateKey]
-                taskNoneList = taskDict.keys()
-                taskList = list()
-                for taskThing in taskNoneList:
-                    taskList.append(str(taskThing))
-                taskList.sort()
-                for taskKey in taskList:
-                    minuteList = taskDict[taskKey]
-                    sum = 0.0
-                    for m in minuteList:
-                        sum = sum + m
-                    print '\t' + taskKey + ' ' + self.format_minutes(sum)
+            if( len(lines) == 0 ):
+                print "There are no tasks in the data file."
+            else:
+                for line in lines:
+                    rec = line.split('\t')
+                    if( len(rec) == 3 ):
+                        task = rec[0]
+                        start = rec[1]
+                        end = rec[2]
+                        duration = self.get_duration_in_minutes(start,end)
+                        dateKey = time.strftime( '%Y%m%d', self.translate_time_to_secs(start))
+                        
+                        # Create a tree of dates that have time reported against them
+                        if( dateKey in dateDict.keys()):
+                            dateValue = dateDict[dateKey]
+                        else:
+                            dateValue = dict()
+                        
+                        # Create a simple dictionary of total elapsed time per date 
+                        if( dateKey in totalTimeDict.keys()):
+                            totalTimeValue = int(totalTimeDict[dateKey])
+                        else:
+                            totalTimeValue = 0
+                        
+                        # For each date in the tree, store a subtree with 
+                        # unique tasks for the date
+                        if( task in dateValue.keys()):
+                            timeList = dateValue[task]
+                        else:
+                            timeList = list()
+                        
+                        # Populate the tree nodes.
+                        timeList.append(duration)
+                        dateValue[task] = timeList
+                        dateDict[dateKey] = dateValue
+                        
+                        # Store total elapsed time for the entire date.
+                        totalTimeValue = totalTimeValue + duration
+                        totalTimeDict[dateKey] = totalTimeValue
+                
+                # Returned keys are untyped. Copy into a list of strings so we can sort.
+                dateNoneList = dateDict.keys()
+                dateList = list()
+                for dateThing in dateNoneList:
+                    dateList.append(str(dateThing))
+                dateList.sort()
+                
+                for dateKey in dateList:
+                    print dateKey[0:4] + '-' + dateKey[4:6] + '-' + dateKey[6:] + ' ' + self.format_minutes(totalTimeDict[dateKey]) +':' 
+                    taskDict = dateDict[dateKey]
+                    taskNoneList = taskDict.keys()
+                    taskList = list()
+                    for taskThing in taskNoneList:
+                        taskList.append(str(taskThing))
+                    taskList.sort()
+                    for taskKey in taskList:
+                        minuteList = taskDict[taskKey]
+                        sum = 0.0
+                        for m in minuteList:
+                            sum = sum + m
+                        print '\t' + taskKey + ' ' + self.format_minutes(sum)
+            # Giant else statement ends here. :)
                     
             self.close_punch_file()
         else:
@@ -517,9 +512,9 @@ Punch.py [-h] command [line-number] [filename] [archive-date]
         version = \
 """
   Punch.py - A time tracker for todo.sh
-  Version 1.0.99
+  Version 0.2beta
   Author: Keith Lawless (keith@keithlawless.com)
-  Last updated: July 2,2009
+  Last updated: 3/14/2009
   License: GPL, http://www.gnu.org/copyleft/gpl.html
 """
         
