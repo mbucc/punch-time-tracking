@@ -23,7 +23,7 @@ Apple Mac OS X versions later than 10.2, as well as most Linux distributions wil
 
 Download the latest Zip archive from this web site. The zip archive will contain two files. Punch.py is the punch-time-tracking executable file, and should be extracted to a location of your choosing (the same directory where todo.sh has been installed is recommended).
 
-After this has been done, edit your .bash_profile file to create an alias for punch - similar to the installation of todo.sh.
+After this has been done, edit your .bash_profile file to create an alias for punch.
 
 For example,
 
@@ -32,4 +32,3 @@ alias punch="python ~/Punch.py"
 could be used if Punch.py was extracted to your home directory.
 
 One this has been done, restart your console or command prompt session to allow the alias to take effect.
-
