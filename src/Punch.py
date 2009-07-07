@@ -23,6 +23,7 @@ from os.path import abspath, exists, join
 from os import pathsep, getenv
 import cPickle
 import os.path
+import os
 import shutil
 import sys
 import time
@@ -123,7 +124,13 @@ class Punch(object):
                 value= propDef[found:].lstrip(":= ").rstrip()
                 self.propDict[name]= value.strip('"')
             configFile.close()
- 
+            
+            # Add the users environment variables to the propDict, unless
+            # a value has already been set.
+            for key in os.environ.keys():
+                if self.propDict.has_key(key) == False:
+                    self.propDict[key] = os.environ[key]
+             
         except IOError:
             raise ToDoConfigNotFoundError    
 
@@ -534,9 +541,9 @@ Punch.py [-h] command [line-number] [filename] [archive-date]
         version = \
 """
   Punch.py - A time tracker for todo.sh
-  Version 1.0.99
+  Version 1.2
   Author: Keith Lawless (keith@keithlawless.com)
-  Last updated: July 2,2009
+  Last updated: July 6,2009
   License: GPL, http://www.gnu.org/copyleft/gpl.html
 """
         
