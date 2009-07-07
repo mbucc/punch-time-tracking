@@ -103,9 +103,12 @@ class Punch(object):
     def parse_config(self):
         """Parse the user's todo.cfg file and place the elements into a dictionary"""
         try:
-            paths = [ getenv("TODOTXT_CFG_FILE"), ".", getenv("HOME")]
+            paths = [ getenv("HOME"), "."]
             files = [ "todo.cfg", ".todo.cfg" ]
-            configFileName = self.search_file(files, paths)
+	    if getenv("TODOTXT_CFG_FILE") == None:
+                configFileName = self.search_file(files, paths)
+            else:
+                configFileName = getenv("TODOTXT_CFG_FILE")
             if configFileName == None:
                 raise ToDoConfigNotFoundError
             configFile = open( configFileName )
