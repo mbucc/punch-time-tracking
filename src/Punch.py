@@ -19,6 +19,8 @@ Created on Mar 5, 2009
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 '''
+from os.path import abspath, exists, join
+from os import pathsep, getenv
 import cPickle
 import os.path
 import shutil
@@ -82,10 +84,30 @@ class Punch(object):
         else:
             raise PunchCommandError
         
+    def search_file(self, files, paths):
+        file_found = 0
+        for filename in files:
+            for path in paths:
+                if path != None:
+                    if exists(join(path, filename)):
+                        file_found = 1
+                        break
+            if file_found:
+                break
+        if file_found:
+            return abspath(join(path, filename))
+        else:
+           return None
+       
     def parse_config(self):
         """Parse the user's todo.cfg file and place the elements into a dictionary"""
         try:
-            configFile = open( "todo.cfg" )
+            paths = [ getenv("TODOTXT_CFG_FILE"), ".", getenv("HOME")]
+            files = [ "todo.cfg", ".todo.cfg" ]
+            configFileName = self.search_file(files, paths)
+            if configFileName == None:
+                raise ToDoConfigNotFoundError
+            configFile = open( configFileName )
             self.propDict = dict()
             for propLine in configFile:
                 propDef = propLine.strip()
@@ -512,9 +534,9 @@ Punch.py [-h] command [line-number] [filename] [archive-date]
         version = \
 """
   Punch.py - A time tracker for todo.sh
-  Version 0.2beta
+  Version 1.0.99
   Author: Keith Lawless (keith@keithlawless.com)
-  Last updated: 3/14/2009
+  Last updated: July 2,2009
   License: GPL, http://www.gnu.org/copyleft/gpl.html
 """
         
